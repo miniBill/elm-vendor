@@ -1,0 +1,14 @@
+{
+    "license": "BSD-3-Clause",
+    "devDependencies": {
+        "elm-review": "^2.10.3",
+        "elm-format": "^0.8.7",
+        "elm-pages": "^3.0.12"
+    },
+    "resolutions": {
+        "**/wrap-ansi": "^7.0.0"
+    },
+    "scripts": {
+        "start": "yarn elm-pages run src/Main.elm ../elm-pages"
+    }
+}

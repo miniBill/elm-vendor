@@ -10,6 +10,6 @@
         "**/wrap-ansi": "^7.0.0"
     },
     "scripts": {
-        "start": "yarn elm-pages run src/Main.elm ../elm-pages"
+        "start": "yarn elm-pages run src/Main.elm ../elm-pages-branches/merged"
     }
 }

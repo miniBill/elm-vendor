@@ -196,25 +196,47 @@ checkDependency { depsDirect, depsIndirect } ( name, constraint ) =
                 )
                 list
     in
-    case findIn depsDirect of
-        Just version ->
-            if Constraint.check version constraint then
-                SatisfiedDirect
+    if
+        List.member (Package.toString name) replacedByCoreExtra
+            && List.any (\( depName, _ ) -> Package.toString depName == "elmcraft/core-extra") depsDirect
+    then
+        SatisfiedDirect
 
-            else
-                Conflicting
+    else
+        case findIn depsDirect of
+            Just version ->
+                if Constraint.check version constraint then
+                    SatisfiedDirect
 
-        Nothing ->
-            case findIn depsIndirect of
-                Just version ->
-                    if Constraint.check version constraint then
-                        SatisfiedIndirect version
+                else
+                    Conflicting
 
-                    else
-                        Conflicting
+            Nothing ->
+                case findIn depsIndirect of
+                    Just version ->
+                        if Constraint.check version constraint then
+                            SatisfiedIndirect version
 
-                Nothing ->
-                    Unsatisfied
+                        else
+                            Conflicting
+
+                    Nothing ->
+                        Unsatisfied
+
+
+replacedByCoreExtra : List String
+replacedByCoreExtra =
+    [ "elm-community/array-extra"
+    , "elm-community/basics-extra"
+    , "elm-community/dict-extra"
+    , "elm-community/list-extra"
+    , "elm-community/maybe-extra"
+    , "elm-community/result-extra"
+    , "elm-community/string-extra"
+    , "GlobalWebIndex/cmd-extra"
+    , "hayleigh-dot-dev/tuple-extra"
+    , "stoeffel/set-extra"
+    ]
 
 
 type DependencyKind

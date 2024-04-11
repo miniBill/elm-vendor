@@ -70,7 +70,7 @@ addFolder application package =
 
         newBody : Json.Encode.Value
         newBody =
-            { application | dirs = target :: application.dirs }
+            { application | dirs = application.dirs ++ [ target ] }
                 |> Project.Application
                 |> Project.encode
     in

@@ -39,6 +39,7 @@ run =
     Do.do (addFolder application package) <| \_ ->
     Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
     Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
+    Do.do (removeDependency package) <| \_ ->
     Do.do (copyFiles packageElmJsonPath package) <| \_ ->
     Script.log "All done 🎉"
 
@@ -66,21 +67,35 @@ addFolder application package =
     let
         target : String
         target =
-            targetPath package
+            targetPath package ++ "/src"
+
+        newDirs : List String
+        newDirs =
+            if List.member target application.dirs then
+                application.dirs
+
+            else
+                application.dirs ++ [ target ]
 
         newBody : Json.Encode.Value
         newBody =
-            { application | dirs = application.dirs ++ [ target ] }
+            { application | dirs = newDirs }
                 |> Project.Application
                 |> Project.encode
     in
-    if List.member target application.dirs then
+    if newDirs == application.dirs then
         Do.noop
 
     else
         Do.log ("Adding " ++ target ++ " to the source directories") <| \_ ->
         Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
             |> BackendTask.allowFatal
+
+
+removeDependency : Project.PackageInfo -> BackendTask FatalError ()
+removeDependency package =
+    command ("elm-json uninstall " ++ Package.toString package.name)
+        |> BackendTask.allowFatal
 
 
 getPathFor : CliOptions -> BackendTask FatalError String

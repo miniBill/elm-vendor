@@ -21,8 +21,8 @@ noop =
 
 
 allowFatal :
-    BackendTask FatalError a
-    -> (a -> BackendTask { error | fatal : FatalError } b)
+    BackendTask { error | fatal : FatalError } a
+    -> (a -> BackendTask FatalError b)
     -> BackendTask FatalError b
 allowFatal x f =
-    BackendTask.andThen (\xv -> f xv |> BackendTask.allowFatal) x
+    BackendTask.andThen f (BackendTask.allowFatal x)

@@ -1,6 +1,7 @@
 module Main exposing (run)
 
 import BackendTask exposing (BackendTask)
+import BackendTask.Custom
 import BackendTask.Do as Do
 import BackendTask.File as File
 import BackendTask.Glob as Glob
@@ -12,13 +13,30 @@ import Elm.Package as Package
 import Elm.Project as Project
 import Elm.Version as Version
 import FatalError exposing (FatalError)
+import Json.Decode
+import Json.Encode
 import List.Extra
 import Pages.Script as Script exposing (Script)
 
 
 run : Script
 run =
-    Script.withCliOptions config task
+    Script.withCliOptions config <| \cliOptions ->
+    Do.do (gatherDependencies cliOptions) <| \{ satisfiedIndirect, unsatisfied } ->
+    Do.log "Moving indirect dependencies to direct ones" <| \_ ->
+    Do.allowFatal
+        (BackendTask.Custom.run "command"
+            (Json.Encode.string <|
+                String.join " " <|
+                    "elm-json install --yes"
+                        :: List.map
+                            (\( ( name, _ ), version ) -> Package.toString name ++ "@" ++ Version.toString version)
+                            satisfiedIndirect
+            )
+            (Json.Decode.succeed ())
+        )
+    <| \_ ->
+    Script.log "All done 🎉"
 
 
 type alias CliOptions =
@@ -49,8 +67,15 @@ config =
             )
 
 
-task : CliOptions -> BackendTask FatalError ()
-task cliOptions =
+gatherDependencies :
+    CliOptions
+    ->
+        BackendTask
+            FatalError
+            { satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
+            , unsatisfied : List ( Package.Name, Constraint.Constraint )
+            }
+gatherDependencies cliOptions =
     let
         targetName : String
         targetName =
@@ -110,25 +135,50 @@ task cliOptions =
 
         padLength : Int
         padLength =
-            [ satisfiedDirect, satisfiedIndirect, unsatisfied, conflicting ]
+            [ List.length satisfiedDirect
+            , List.length satisfiedIndirect
+            , List.length unsatisfied
+            , List.length conflicting
+            ]
                 |> List.map
                     (\list ->
                         list
-                            |> List.length
                             |> String.fromInt
                             |> String.length
                     )
                 |> List.maximum
                 |> Maybe.withDefault 0
+
+        message =
+            [ "The package needs " ++ lengthString package.deps ++ " dependencies, of which:"
+            , " - " ++ lengthString satisfiedDirect ++ " are already satisfied,"
+            , " - " ++ lengthString satisfiedIndirect ++ " are compatible with the indirect dependencies,"
+            , " - " ++ lengthString unsatisfied ++ " are not satisfied,"
+            , " - " ++ lengthString conflicting ++ " are incompatible with your current dependencies."
+            ]
+                |> String.join "\n"
     in
-    [ "The package needs " ++ lengthString package.deps ++ " dependencies, of which:"
-    , " - " ++ lengthString satisfiedDirect ++ " are already satisfied,"
-    , " - " ++ lengthString satisfiedIndirect ++ " are compatible with the indirect dependencies,"
-    , " - " ++ lengthString unsatisfied ++ " are not satisfied,"
-    , " - " ++ lengthString conflicting ++ " are incompatible with your current dependencies."
-    ]
-        |> String.join "\n"
-        |> Script.log
+    Do.log message <| \_ ->
+    if List.isEmpty conflicting then
+        BackendTask.succeed
+            { satisfiedIndirect = satisfiedIndirect
+            , unsatisfied = unsatisfied
+            }
+
+    else
+        BackendTask.fail <|
+            FatalError.build
+                { title = "Incompatible dependencies"
+                , body =
+                    "The following dependencies from the package are incompatible with your current application: "
+                        ++ String.join ", "
+                            (List.map
+                                (\( dep, constraint ) ->
+                                    Package.toString dep ++ " " ++ Constraint.toString constraint
+                                )
+                                conflicting
+                            )
+                }
 
 
 checkDependency : Project.ApplicationInfo -> ( Package.Name, Constraint.Constraint ) -> DependencyKind
@@ -158,7 +208,7 @@ checkDependency { depsDirect, depsIndirect } ( name, constraint ) =
             case findIn depsIndirect of
                 Just version ->
                     if Constraint.check version constraint then
-                        SatisfiedIndirect
+                        SatisfiedIndirect version
 
                     else
                         Conflicting
@@ -169,19 +219,19 @@ checkDependency { depsDirect, depsIndirect } ( name, constraint ) =
 
 type DependencyKind
     = SatisfiedDirect
-    | SatisfiedIndirect
+    | SatisfiedIndirect Version.Version
     | Unsatisfied
     | Conflicting
 
 
 tripartition :
-    (a -> DependencyKind)
-    -> List a
+    (( Package.Name, Constraint.Constraint ) -> DependencyKind)
+    -> List ( Package.Name, Constraint.Constraint )
     ->
-        { satisfiedDirect : List a
-        , satisfiedIndirect : List a
-        , unsatisfied : List a
-        , conflicting : List a
+        { satisfiedDirect : List ( Package.Name, Constraint.Constraint )
+        , satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
+        , unsatisfied : List ( Package.Name, Constraint.Constraint )
+        , conflicting : List ( Package.Name, Constraint.Constraint )
         }
 tripartition f xs =
     let
@@ -199,8 +249,8 @@ tripartition f xs =
                         SatisfiedDirect ->
                             go tail { acc | satisfiedDirect = head :: acc.satisfiedDirect }
 
-                        SatisfiedIndirect ->
-                            go tail { acc | satisfiedIndirect = head :: acc.satisfiedIndirect }
+                        SatisfiedIndirect version ->
+                            go tail { acc | satisfiedIndirect = ( head, version ) :: acc.satisfiedIndirect }
 
                         Unsatisfied ->
                             go tail { acc | unsatisfied = head :: acc.unsatisfied }

@@ -22,10 +22,31 @@ import Pages.Script as Script exposing (Script)
 run : Script
 run =
     Script.withCliOptions config <| \cliOptions ->
-    Do.do (gatherDependencies cliOptions) <| \{ satisfiedIndirect, unsatisfied } ->
+    let
+        targetName : String
+        targetName =
+            -- case cliOptions.version of
+            case Nothing of
+                Just version ->
+                    cliOptions.nameOrPath ++ ", version " ++ version
+
+                Nothing ->
+                    cliOptions.nameOrPath
+    in
+    Do.log ("💭 Trying to vendor " ++ targetName) <| \_ ->
+    Do.do (getPathFor cliOptions) <| \packageElmJsonPath ->
+    Do.do (gatherDependencies packageElmJsonPath) <| \{ satisfiedIndirect, unsatisfied } ->
     Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
     Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
     Script.log "All done 🎉"
+
+
+getPathFor : CliOptions -> BackendTask FatalError String
+getPathFor cliOptions =
+    Glob.succeed identity
+        |> Glob.capture (Glob.literal <| cliOptions.nameOrPath ++ "/elm.json")
+        |> Glob.expectUniqueMatch
+        |> BackendTask.allowFatal
 
 
 installIndirectDependencies : List ( ( Package.Name, Constraint.Constraint ), Version.Version ) -> BackendTask FatalError ()
@@ -121,26 +142,14 @@ config =
 
 
 gatherDependencies :
-    CliOptions
+    String
     ->
         BackendTask
             FatalError
             { satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
             , unsatisfied : List ( Package.Name, Constraint.Constraint )
             }
-gatherDependencies cliOptions =
-    let
-        targetName : String
-        targetName =
-            -- case cliOptions.version of
-            case Nothing of
-                Just version ->
-                    cliOptions.nameOrPath ++ ", version " ++ version
-
-                Nothing ->
-                    cliOptions.nameOrPath
-    in
-    Do.log ("💭 Trying to vendor " ++ targetName) <| \_ ->
+gatherDependencies packageElmJsonPath =
     Do.do
         (File.jsonFile Project.decoder "elm.json"
             |> BackendTask.allowFatal
@@ -156,15 +165,8 @@ gatherDependencies cliOptions =
         )
     <| \application ->
     Do.do
-        (Glob.succeed identity
-            |> Glob.capture (Glob.literal <| cliOptions.nameOrPath ++ "/elm.json")
-            |> Glob.expectUniqueMatch
+        (File.jsonFile Project.decoder packageElmJsonPath
             |> BackendTask.allowFatal
-            |> BackendTask.andThen
-                (\elmJsonPath ->
-                    File.jsonFile Project.decoder elmJsonPath
-                        |> BackendTask.allowFatal
-                )
             |> BackendTask.andThen
                 (\project ->
                     case project of

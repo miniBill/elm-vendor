@@ -8,7 +8,6 @@ import BackendTask.Glob as Glob
 import Cli.Option as Option
 import Cli.OptionsParser as OptionsParser
 import Cli.Program as Program
-import Dict
 import Elm.Constraint as Constraint
 import Elm.Package as Package
 import Elm.Project as Project
@@ -36,19 +35,19 @@ run =
     in
     Do.log ("💭 Trying to vendor " ++ targetName) <| \_ ->
     Do.do (getPathFor cliOptions) <| \packageElmJsonPath ->
-    Do.do (gatherDependencies packageElmJsonPath) <| \{ packageName, packageVersion, satisfiedIndirect, unsatisfied } ->
+    Do.do (gatherDependencies packageElmJsonPath) <| \{ application, package, satisfiedIndirect, unsatisfied } ->
     Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
     Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
-    Do.do (copyFiles packageElmJsonPath packageName packageVersion) <| \_ ->
-    Do.do (addFolder packageName packageVersion) <| \_ ->
+    Do.do (copyFiles packageElmJsonPath package) <| \_ ->
+    Do.do (addFolder application package) <| \_ ->
     Script.log "All done 🎉"
 
 
-copyFiles : String -> Package.Name -> Version.Version -> BackendTask FatalError ()
-copyFiles packageElmJsonPath packageName packageVersion =
+copyFiles : String -> Project.PackageInfo -> BackendTask FatalError ()
+copyFiles packageElmJsonPath package =
     let
         path =
-            targetPath packageName packageVersion
+            targetPath package
     in
     Do.allowFatal (command <| "mkdir -p " ++ path) <| \_ ->
     Do.log "Copying files" <| \_ ->
@@ -56,32 +55,20 @@ copyFiles packageElmJsonPath packageName packageVersion =
     Do.noop
 
 
-targetPath : Package.Name -> Version.Version -> String
-targetPath packageName packageVersion =
-    "vendored/" ++ Package.toString packageName ++ "/" ++ Version.toString packageVersion
+targetPath : Project.PackageInfo -> String
+targetPath package =
+    "vendored/" ++ Package.toString package.name ++ "/" ++ Version.toString package.version
 
 
-addFolder : Package.Name -> Version.Version -> BackendTask FatalError ()
-addFolder packageName packageVersion =
-    Do.allowFatal
-        (File.jsonFile
-            (Json.Decode.map2
-                (\dict sourceDirectories ->
-                    dict
-                        |> Dict.insert "source-directories"
-                            (Json.Encode.list Json.Encode.string <|
-                                targetPath packageName packageVersion
-                                    :: sourceDirectories
-                            )
-                        |> Dict.toList
-                        |> Json.Encode.object
-                )
-                (Json.Decode.dict Json.Decode.value)
-                (Json.Decode.field "source-directories" (Json.Decode.list Json.Decode.string))
-            )
-            "elm.json"
-        )
-    <| \newBody ->
+addFolder : Project.ApplicationInfo -> Project.PackageInfo -> BackendTask FatalError ()
+addFolder application package =
+    let
+        newBody : Json.Encode.Value
+        newBody =
+            { application | dirs = targetPath package :: application.dirs }
+                |> Project.Application
+                |> Project.encode
+    in
     Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
         |> BackendTask.allowFatal
 
@@ -188,8 +175,8 @@ gatherDependencies :
     ->
         BackendTask
             FatalError
-            { packageName : Package.Name
-            , packageVersion : Version.Version
+            { application : Project.ApplicationInfo
+            , package : Project.PackageInfo
             , satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
             , unsatisfied : List ( Package.Name, Constraint.Constraint )
             }
@@ -260,8 +247,8 @@ gatherDependencies packageElmJsonPath =
     Do.log message <| \_ ->
     if List.isEmpty conflicting then
         BackendTask.succeed
-            { packageName = package.name
-            , packageVersion = package.version
+            { application = application
+            , package = package
             , satisfiedIndirect = satisfiedIndirect
             , unsatisfied = unsatisfied
             }

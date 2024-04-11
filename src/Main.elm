@@ -36,22 +36,23 @@ run =
     Do.log ("💭 Trying to vendor " ++ targetName) <| \_ ->
     Do.do (getPathFor cliOptions) <| \packageElmJsonPath ->
     Do.do (gatherDependencies packageElmJsonPath) <| \{ application, package, satisfiedIndirect, unsatisfied } ->
+    Do.do (addFolder application package) <| \_ ->
     Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
     Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
     Do.do (copyFiles packageElmJsonPath package) <| \_ ->
-    Do.do (addFolder application package) <| \_ ->
     Script.log "All done 🎉"
 
 
 copyFiles : String -> Project.PackageInfo -> BackendTask FatalError ()
 copyFiles packageElmJsonPath package =
     let
-        path =
+        target : String
+        target =
             targetPath package
     in
-    Do.allowFatal (command <| "mkdir -p " ++ path) <| \_ ->
+    Do.allowFatal (command <| "mkdir -p " ++ target) <| \_ ->
     Do.log "Copying files" <| \_ ->
-    Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/* " ++ path) <| \_ ->
+    Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/* " ++ target) <| \_ ->
     Do.noop
 
 
@@ -63,14 +64,23 @@ targetPath package =
 addFolder : Project.ApplicationInfo -> Project.PackageInfo -> BackendTask FatalError ()
 addFolder application package =
     let
+        target : String
+        target =
+            targetPath package
+
         newBody : Json.Encode.Value
         newBody =
-            { application | dirs = targetPath package :: application.dirs }
+            { application | dirs = target :: application.dirs }
                 |> Project.Application
                 |> Project.encode
     in
-    Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
-        |> BackendTask.allowFatal
+    if List.member target application.dirs then
+        Do.noop
+
+    else
+        Do.log ("Adding " ++ target ++ " to the source directories") <| \_ ->
+        Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
+            |> BackendTask.allowFatal
 
 
 getPathFor : CliOptions -> BackendTask FatalError String

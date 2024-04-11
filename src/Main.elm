@@ -53,7 +53,7 @@ copyFiles packageElmJsonPath package =
     in
     Do.allowFatal (command <| "mkdir -p " ++ target) <| \_ ->
     Do.log "Copying files" <| \_ ->
-    Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/* " ++ target) <| \_ ->
+    Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/{LICENSE,src,README.md,elm.json} " ++ target) <| \_ ->
     Do.noop
 
 

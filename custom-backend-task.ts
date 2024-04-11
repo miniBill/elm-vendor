@@ -5,10 +5,9 @@ export async function command(cmdline: string): Promise<{}> {
         child_process.exec(cmdline + " 2>&1", (err, stdout) => {
             if (err) {
                 reject(err);
-                return;
+            } else {
+                resolve(stdout);
             }
-            console.log(stdout);
-            resolve({});
         })
     );
 }

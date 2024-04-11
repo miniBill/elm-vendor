@@ -23,20 +23,73 @@ run : Script
 run =
     Script.withCliOptions config <| \cliOptions ->
     Do.do (gatherDependencies cliOptions) <| \{ satisfiedIndirect, unsatisfied } ->
-    Do.log "Moving indirect dependencies to direct ones" <| \_ ->
-    Do.allowFatal
-        (BackendTask.Custom.run "command"
-            (Json.Encode.string <|
-                String.join " " <|
-                    "elm-json install --yes"
-                        :: List.map
-                            (\( ( name, _ ), version ) -> Package.toString name ++ "@" ++ Version.toString version)
-                            satisfiedIndirect
-            )
-            (Json.Decode.succeed ())
-        )
-    <| \_ ->
+    Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
+    Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
     Script.log "All done 🎉"
+
+
+installIndirectDependencies : List ( ( Package.Name, Constraint.Constraint ), Version.Version ) -> BackendTask FatalError ()
+installIndirectDependencies satisfiedIndirect =
+    if List.isEmpty satisfiedIndirect then
+        Do.noop
+
+    else
+        let
+            versioned : List String
+            versioned =
+                List.map
+                    (\( ( name, _ ), version ) -> Package.toString name ++ "@" ++ Version.toString version)
+                    satisfiedIndirect
+
+            cmd : String
+            cmd =
+                String.join " " ("elm-json install --yes" :: versioned)
+        in
+        Do.log "Moving indirect dependencies to direct ones" <| \_ ->
+        Do.log cmd <| \_ ->
+        Do.allowFatal (command cmd) <| \_ ->
+        Do.noop
+
+
+installUnsatisfiedDependencies : List ( Package.Name, Constraint.Constraint ) -> BackendTask FatalError ()
+installUnsatisfiedDependencies unsatisfied =
+    if List.isEmpty unsatisfied then
+        Do.noop
+
+    else
+        let
+            extractVersion : Constraint.Constraint -> String
+            extractVersion constraint =
+                constraint
+                    |> Constraint.toString
+                    |> String.split " "
+                    |> List.take 1
+                    |> String.concat
+
+            versioned : List String
+            versioned =
+                List.map
+                    (\( name, constraint ) -> Package.toString name ++ "@" ++ extractVersion constraint)
+                    unsatisfied
+
+            cmd : String
+            cmd =
+                String.join " " ("elm-json install --yes" :: versioned)
+        in
+        Do.log "Installing unsatisfied dependencies" <| \_ ->
+        Do.log cmd <| \_ ->
+        Do.allowFatal (command cmd) <| \_ ->
+        Do.noop
+
+
+command :
+    String
+    -> BackendTask { fatal : FatalError, recoverable : BackendTask.Custom.Error } ()
+command cmd =
+    BackendTask.Custom.run "command"
+        (Json.Encode.string cmd)
+        Json.Decode.string
+        |> BackendTask.andThen Script.log
 
 
 type alias CliOptions =

@@ -8,6 +8,7 @@ import BackendTask.Glob as Glob
 import Cli.Option as Option
 import Cli.OptionsParser as OptionsParser
 import Cli.Program as Program
+import Dict
 import Elm.Constraint as Constraint
 import Elm.Package as Package
 import Elm.Project as Project
@@ -35,10 +36,54 @@ run =
     in
     Do.log ("💭 Trying to vendor " ++ targetName) <| \_ ->
     Do.do (getPathFor cliOptions) <| \packageElmJsonPath ->
-    Do.do (gatherDependencies packageElmJsonPath) <| \{ satisfiedIndirect, unsatisfied } ->
+    Do.do (gatherDependencies packageElmJsonPath) <| \{ packageName, packageVersion, satisfiedIndirect, unsatisfied } ->
     Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
     Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
+    Do.do (copyFiles packageElmJsonPath packageName packageVersion) <| \_ ->
+    Do.do (addFolder packageName packageVersion) <| \_ ->
     Script.log "All done 🎉"
+
+
+copyFiles : String -> Package.Name -> Version.Version -> BackendTask FatalError ()
+copyFiles packageElmJsonPath packageName packageVersion =
+    let
+        path =
+            targetPath packageName packageVersion
+    in
+    Do.allowFatal (command <| "mkdir -p " ++ path) <| \_ ->
+    Do.log "Copying files" <| \_ ->
+    Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/* " ++ path) <| \_ ->
+    Do.noop
+
+
+targetPath : Package.Name -> Version.Version -> String
+targetPath packageName packageVersion =
+    "vendored/" ++ Package.toString packageName ++ "/" ++ Version.toString packageVersion
+
+
+addFolder : Package.Name -> Version.Version -> BackendTask FatalError ()
+addFolder packageName packageVersion =
+    Do.allowFatal
+        (File.jsonFile
+            (Json.Decode.map2
+                (\dict sourceDirectories ->
+                    dict
+                        |> Dict.insert "source-directories"
+                            (Json.Encode.list Json.Encode.string <|
+                                targetPath packageName packageVersion
+                                    :: sourceDirectories
+                            )
+                        |> Dict.toList
+                        |> Json.Encode.object
+                )
+                (Json.Decode.dict Json.Decode.value)
+                (Json.Decode.field "source-directories" (Json.Decode.list Json.Decode.string))
+            )
+            "elm.json"
+        )
+    <| \newBody ->
+    Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
+        |> BackendTask.allowFatal
 
 
 getPathFor : CliOptions -> BackendTask FatalError String
@@ -67,7 +112,6 @@ installIndirectDependencies satisfiedIndirect =
                 String.join " " ("elm-json install --yes" :: versioned)
         in
         Do.log "Moving indirect dependencies to direct ones" <| \_ ->
-        Do.log cmd <| \_ ->
         Do.allowFatal (command cmd) <| \_ ->
         Do.noop
 
@@ -98,7 +142,6 @@ installUnsatisfiedDependencies unsatisfied =
                 String.join " " ("elm-json install --yes" :: versioned)
         in
         Do.log "Installing unsatisfied dependencies" <| \_ ->
-        Do.log cmd <| \_ ->
         Do.allowFatal (command cmd) <| \_ ->
         Do.noop
 
@@ -107,10 +150,9 @@ command :
     String
     -> BackendTask { fatal : FatalError, recoverable : BackendTask.Custom.Error } ()
 command cmd =
-    BackendTask.Custom.run "command"
-        (Json.Encode.string cmd)
-        Json.Decode.string
-        |> BackendTask.andThen Script.log
+    Do.log cmd <| \_ ->
+    Do.do (BackendTask.Custom.run "command" (Json.Encode.string cmd) Json.Decode.string) <| \output ->
+    Script.log output
 
 
 type alias CliOptions =
@@ -146,7 +188,9 @@ gatherDependencies :
     ->
         BackendTask
             FatalError
-            { satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
+            { packageName : Package.Name
+            , packageVersion : Version.Version
+            , satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
             , unsatisfied : List ( Package.Name, Constraint.Constraint )
             }
 gatherDependencies packageElmJsonPath =
@@ -216,7 +260,9 @@ gatherDependencies packageElmJsonPath =
     Do.log message <| \_ ->
     if List.isEmpty conflicting then
         BackendTask.succeed
-            { satisfiedIndirect = satisfiedIndirect
+            { packageName = package.name
+            , packageVersion = package.version
+            , satisfiedIndirect = satisfiedIndirect
             , unsatisfied = unsatisfied
             }
 

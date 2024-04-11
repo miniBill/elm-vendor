@@ -39,7 +39,7 @@ run =
     Do.do (addFolder application package) <| \_ ->
     Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
     Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
-    Do.do (removeDependency package) <| \_ ->
+    Do.do (removeDependency application package) <| \_ ->
     Do.do (copyFiles packageElmJsonPath package) <| \_ ->
     Script.log "All done 🎉"
 
@@ -92,10 +92,14 @@ addFolder application package =
             |> BackendTask.allowFatal
 
 
-removeDependency : Project.PackageInfo -> BackendTask FatalError ()
-removeDependency package =
-    command ("elm-json uninstall " ++ Package.toString package.name)
-        |> BackendTask.allowFatal
+removeDependency : Project.ApplicationInfo -> Project.PackageInfo -> BackendTask FatalError ()
+removeDependency application package =
+    if List.any (\( depName, _ ) -> depName == package.name) application.depsDirect then
+        command ("elm-json uninstall --yes " ++ Package.toString package.name)
+            |> BackendTask.allowFatal
+
+    else
+        Do.noop
 
 
 getPathFor : CliOptions -> BackendTask FatalError String

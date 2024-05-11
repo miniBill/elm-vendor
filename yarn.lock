@@ -473,6 +473,11 @@
   resolved "https://registry.yarnpkg.com/@sindresorhus/merge-streams/-/merge-streams-1.0.0.tgz#9cd84cc15bc865a5ca35fcaae198eb899f7b5c90"
   integrity sha512-rUV5WyJrJLoloD4NDN1V1+LDMDWOa4OTsT4yYJwQNpTU6FWxkxHpL7eu4w+DmiH8x/EAM1otkPE1+LaspIbplw==
 
+"@sindresorhus/merge-streams@^3.0.0":
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/@sindresorhus/merge-streams/-/merge-streams-3.0.0.tgz#26cac4f10a21f9c52528e9fe1b19abb4edd69f61"
+  integrity sha512-5Muw0TDzXvK/i0BmrL1tiTsb6Sh/DXe/e5d63GpmHWr59t7rUyQhhiIuw605q/yvJxyBf6gMWmsxCC2fqtcFvQ==
+
 "@szmarczak/http-timer@^1.1.2":
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/@szmarczak/http-timer/-/http-timer-1.1.2.tgz#b1665e2c461a2cd92f4c1bbf50d5454de0d4b421"
@@ -883,6 +888,13 @@ cli-cursor@^3.1.0:
   dependencies:
     restore-cursor "^3.1.0"
 
+cli-cursor@^4.0.0:
+  version "4.0.0"
+  resolved "https://registry.yarnpkg.com/cli-cursor/-/cli-cursor-4.0.0.tgz#3cecfe3734bf4fe02a8361cbdc0f6fe28c6a57ea"
+  integrity sha512-VGtlMu3x/4DOtIUwEkRezxUZ2lBacNJCHash0N0WeZDBS+7Ux1dm3XWAgWYxLJFMMdOeXMHXorshEFhbMSGelg==
+  dependencies:
+    restore-cursor "^4.0.0"
+
 cli-spinners@^2.5.0:
   version "2.9.2"
   resolved "https://registry.yarnpkg.com/cli-spinners/-/cli-spinners-2.9.2.tgz#1773a8f4b9c4d6ac31563df53b3fc1d79462fe41"
@@ -1143,13 +1155,15 @@ elm-hot@^1.1.6:
   resolved "https://registry.yarnpkg.com/elm-hot/-/elm-hot-1.1.6.tgz#93e3962b40670e65f0a3640951b3add2702bfd0e"
   integrity sha512-zYZJlfs7Gt4BdjA+D+857K+XAWzwwySJmXCgFpHW1dIEfaHSZCIPYPf7/jinZBLfKRkOAlKzI32AA84DY50g7Q==
 
-elm-pages@^3.0.12:
-  version "3.0.12"
-  resolved "https://registry.yarnpkg.com/elm-pages/-/elm-pages-3.0.12.tgz#75f0f2b4cb7d3d88977d8b295ea14c43d043ef8f"
-  integrity sha512-MqQHXrjl9BNPaFv+46yCxjuU7cyzzN0eQESGURXXd8O7Uv9HRgQTy+c5YCTUDSutJoN3xmVBfdeLgb9NLT8NMg==
+elm-pages@^3.0.15:
+  version "3.0.15"
+  resolved "https://registry.yarnpkg.com/elm-pages/-/elm-pages-3.0.15.tgz#f4e42be2a7519f1ffa335c2c836805ffa7dc1c95"
+  integrity sha512-L0WS5msmWYILUYdPWa6NmVDTCSXW0sU6gQTtt36jmIS4aYQA41H75UPkZ14+xahcvlrhw9GTKXmqWV6Rcz1L4w==
   dependencies:
+    "@sindresorhus/merge-streams" "^3.0.0"
     busboy "^1.6.0"
     chokidar "^3.5.3"
+    cli-cursor "^4.0.0"
     commander "^11.1.0"
     connect "^3.7.0"
     cookie-signature "^1.2.1"
@@ -2542,6 +2556,14 @@ restore-cursor@^3.1.0:
   version "3.1.0"
   resolved "https://registry.yarnpkg.com/restore-cursor/-/restore-cursor-3.1.0.tgz#39f67c54b3a7a58cea5236d95cf0034239631f7e"
   integrity sha512-l+sSefzHpj5qimhFSE5a8nufZYAM3sBSVMAPtYkmC+4EH2anSGaEMXSD0izRQbu9nfyQ9y5JrVmp7E8oZrUjvA==
+  dependencies:
+    onetime "^5.1.0"
+    signal-exit "^3.0.2"
+
+restore-cursor@^4.0.0:
+  version "4.0.0"
+  resolved "https://registry.yarnpkg.com/restore-cursor/-/restore-cursor-4.0.0.tgz#519560a4318975096def6e609d44100edaa4ccb9"
+  integrity sha512-I9fPXU9geO9bHOt9pHHOhOkYerIMsmVaWB0rA2AI9ERh/+x/i7MV5HKBNrg+ljO5eoPVgCcnFuRjJ9uH6I/3eg==
   dependencies:
     onetime "^5.1.0"
     signal-exit "^3.0.2"

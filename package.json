@@ -2,11 +2,18 @@
     "license": "BSD-3-Clause",
     "devDependencies": {
         "elm-format": "^0.8.7",
-        "elm-pages": "^3.0.15",
+        "elm-pages": "^3.0.19",
         "elm-review": "^2.10.3",
         "elm-test-rs": "^3.0.0-5"
     },
+    "overrides": {
+        "elm-doc-preview": ">=6.0.0",
+        "cross-spawn": ">=7.0.3",
+        "**/wrap-ansi": "^7.0.0"
+    },
     "resolutions": {
+        "elm-doc-preview": ">=6.0.0",
+        "cross-spawn": ">=7.0.3",
         "**/wrap-ansi": "^7.0.0"
     },
     "scripts": {

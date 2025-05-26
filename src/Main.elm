@@ -17,31 +17,39 @@ import Json.Decode
 import Json.Encode
 import List.Extra
 import Pages.Script as Script exposing (Script)
+import Pages.Script.Spinner as Spinner
 
 
 run : Script
 run =
     Script.withCliOptions config <| \cliOptions ->
-    let
-        targetName : String
-        targetName =
-            -- case cliOptions.version of
-            case Nothing of
-                Just version ->
-                    cliOptions.nameOrPath ++ ", version " ++ version
+    Spinner.steps
+        |> Spinner.withStep "Checking elm.json from package" (\_ -> getPathFor cliOptions)
+        |> Spinner.withStep "Gather dependencies"
+            (\packageElmJsonPath ->
+                gatherDependencies packageElmJsonPath
+                    |> BackendTask.map
+                        (\{ application, package, satisfiedIndirect, unsatisfied } ->
+                            { packageElmJsonPath = packageElmJsonPath
+                            , application = application
+                            , package = package
+                            , satisfiedIndirect = satisfiedIndirect
+                            , unsatisfied = unsatisfied
+                            }
+                        )
+            )
+        |> withStep_ "Adding folder to the local elm.json" (\{ application, package } -> addFolder application package)
+        |> withStep_ "Installing package's dependencies that were indirect" (\{ satisfiedIndirect } -> installIndirectDependencies satisfiedIndirect)
+        |> withStep_ "Installing package's dependencies that were missing" (\{ unsatisfied } -> installUnsatisfiedDependencies unsatisfied)
+        |> withStep_ "Removing the package from the dependencies" (\{ application, package } -> removeDependency application package)
+        |> withStep_ "Copying files" (\{ packageElmJsonPath, package } -> copyFiles packageElmJsonPath package)
+        |> Spinner.runSteps
+        |> BackendTask.map (always ())
 
-                Nothing ->
-                    cliOptions.nameOrPath
-    in
-    Do.log ("💭 Trying to vendor " ++ targetName) <| \_ ->
-    Do.do (getPathFor cliOptions) <| \packageElmJsonPath ->
-    Do.do (gatherDependencies packageElmJsonPath) <| \{ application, package, satisfiedIndirect, unsatisfied } ->
-    Do.do (addFolder application package) <| \_ ->
-    Do.do (installIndirectDependencies satisfiedIndirect) <| \_ ->
-    Do.do (installUnsatisfiedDependencies unsatisfied) <| \_ ->
-    Do.do (removeDependency application package) <| \_ ->
-    Do.do (copyFiles packageElmJsonPath package) <| \_ ->
-    Script.log "All done 🎉"
+
+withStep_ : String -> (a -> BackendTask FatalError b) -> Spinner.Steps FatalError a -> Spinner.Steps FatalError a
+withStep_ label f previous =
+    Spinner.withStep label (\input -> BackendTask.map (always input) (f input)) previous
 
 
 copyFiles : String -> Project.PackageInfo -> BackendTask FatalError ()

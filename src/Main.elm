@@ -104,8 +104,18 @@ removeDependency application package =
 
 getPathFor : CliOptions -> BackendTask FatalError String
 getPathFor cliOptions =
+    let
+        cut : String -> String -> String
+        cut tail input =
+            if String.endsWith tail input then
+                String.dropRight (String.length tail) input
+
+            else
+                input
+    in
+    Do.log "Getting elm.json path" <| \_ ->
     Glob.succeed identity
-        |> Glob.capture (Glob.literal <| cliOptions.nameOrPath ++ "/elm.json")
+        |> Glob.capture (Glob.literal <| (cliOptions.nameOrPath |> cut "elm.json" |> cut "/") ++ "/elm.json")
         |> Glob.expectUniqueMatch
         |> BackendTask.allowFatal
 

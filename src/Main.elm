@@ -25,7 +25,7 @@ run =
     Script.withCliOptions config <| \cliOptions ->
     Spinner.steps
         |> Spinner.withStep "Checking elm.json from package" (\_ -> getPathFor cliOptions)
-        |> Spinner.withStep "Gather dependencies"
+        |> Spinner.withStep "Gathering dependencies"
             (\packageElmJsonPath ->
                 gatherDependencies packageElmJsonPath
                     |> BackendTask.map
@@ -60,7 +60,6 @@ copyFiles packageElmJsonPath package =
             targetPath package
     in
     Do.allowFatal (command <| "mkdir -p " ++ target) <| \_ ->
-    Do.log "Copying files" <| \_ ->
     Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/{LICENSE,src,README.md,elm.json} " ++ target) <| \_ ->
     Do.noop
 
@@ -95,7 +94,6 @@ addFolder application package =
         Do.noop
 
     else
-        Do.log ("Adding " ++ target ++ " to the source directories") <| \_ ->
         Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
             |> BackendTask.allowFatal
 
@@ -121,7 +119,6 @@ getPathFor cliOptions =
             else
                 input
     in
-    Do.log "Getting elm.json path" <| \_ ->
     Glob.succeed identity
         |> Glob.capture (Glob.literal <| (cliOptions.nameOrPath |> cut "elm.json" |> cut "/") ++ "/elm.json")
         |> Glob.expectUniqueMatch
@@ -145,9 +142,7 @@ installIndirectDependencies satisfiedIndirect =
             cmd =
                 String.join " " ("elm-json install --yes" :: versioned)
         in
-        Do.log "Moving indirect dependencies to direct ones" <| \_ ->
-        Do.allowFatal (command cmd) <| \_ ->
-        Do.noop
+        BackendTask.allowFatal (command cmd)
 
 
 installUnsatisfiedDependencies : List ( Package.Name, Constraint.Constraint ) -> BackendTask FatalError ()
@@ -175,9 +170,7 @@ installUnsatisfiedDependencies unsatisfied =
             cmd =
                 String.join " " ("elm-json install --yes" :: versioned)
         in
-        Do.log "Installing unsatisfied dependencies" <| \_ ->
-        Do.allowFatal (command cmd) <| \_ ->
-        Do.noop
+        BackendTask.allowFatal (command cmd)
 
 
 command :

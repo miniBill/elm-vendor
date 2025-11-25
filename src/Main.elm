@@ -22,29 +22,30 @@ import Pages.Script.Spinner as Spinner
 
 run : Script
 run =
-    Script.withCliOptions config <| \cliOptions ->
-    Spinner.steps
-        |> Spinner.withStep "Checking elm.json from package" (\_ -> getPathFor cliOptions)
-        |> Spinner.withStep "Gathering dependencies"
-            (\packageElmJsonPath ->
-                gatherDependencies packageElmJsonPath
-                    |> BackendTask.map
-                        (\{ application, package, satisfiedIndirect, unsatisfied } ->
-                            { packageElmJsonPath = packageElmJsonPath
-                            , application = application
-                            , package = package
-                            , satisfiedIndirect = satisfiedIndirect
-                            , unsatisfied = unsatisfied
-                            }
-                        )
-            )
-        |> withStep_ "Adding folder to the local elm.json" (\{ application, package } -> addFolder application package)
-        |> withStep_ "Installing package's dependencies that were indirect" (\{ satisfiedIndirect } -> installIndirectDependencies satisfiedIndirect)
-        |> withStep_ "Installing package's dependencies that were missing" (\{ unsatisfied } -> installUnsatisfiedDependencies unsatisfied)
-        |> withStep_ "Removing the package from the dependencies" (\{ application, package } -> removeDependency application package)
-        |> withStep_ "Copying files" (\{ packageElmJsonPath, package } -> copyFiles packageElmJsonPath package)
-        |> Spinner.runSteps
-        |> BackendTask.map (always ())
+    Script.withCliOptions config <|
+        \cliOptions ->
+            Spinner.steps
+                |> Spinner.withStep "Checking elm.json from package" (\_ -> getPathFor cliOptions)
+                |> Spinner.withStep "Gathering dependencies"
+                    (\packageElmJsonPath ->
+                        gatherDependencies packageElmJsonPath
+                            |> BackendTask.map
+                                (\{ application, package, satisfiedIndirect, unsatisfied } ->
+                                    { packageElmJsonPath = packageElmJsonPath
+                                    , application = application
+                                    , package = package
+                                    , satisfiedIndirect = satisfiedIndirect
+                                    , unsatisfied = unsatisfied
+                                    }
+                                )
+                    )
+                |> withStep_ "Adding folder to the local elm.json" (\{ application, package } -> addFolder application package)
+                |> withStep_ "Installing package's dependencies that were indirect" (\{ satisfiedIndirect } -> installIndirectDependencies satisfiedIndirect)
+                |> withStep_ "Installing package's dependencies that were missing" (\{ unsatisfied } -> installUnsatisfiedDependencies unsatisfied)
+                |> withStep_ "Removing the package from the dependencies" (\{ application, package } -> removeDependency application package)
+                |> withStep_ "Copying files" (\{ packageElmJsonPath, package } -> copyFiles packageElmJsonPath package)
+                |> Spinner.runSteps
+                |> BackendTask.map (always ())
 
 
 withStep_ : String -> (a -> BackendTask FatalError b) -> Spinner.Steps FatalError a -> Spinner.Steps FatalError a
@@ -59,9 +60,11 @@ copyFiles packageElmJsonPath package =
         target =
             targetPath package
     in
-    Do.allowFatal (command <| "mkdir -p " ++ target) <| \_ ->
-    Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/{LICENSE,src,README.md,elm.json} " ++ target) <| \_ ->
-    Do.noop
+    Do.allowFatal (command <| "mkdir -p " ++ target) <|
+        \_ ->
+            Do.allowFatal (command <| "cp -r $(dirname " ++ packageElmJsonPath ++ ")/{LICENSE,src,README.md,elm.json} " ++ target) <|
+                \_ ->
+                    Do.noop
 
 
 targetPath : Project.PackageInfo -> String
@@ -83,17 +86,18 @@ addFolder application package =
 
             else
                 application.dirs ++ [ target ]
-
-        newBody : Json.Encode.Value
-        newBody =
-            { application | dirs = newDirs }
-                |> Project.Application
-                |> Project.encode
     in
     if newDirs == application.dirs then
         Do.noop
 
     else
+        let
+            newBody : Json.Encode.Value
+            newBody =
+                { application | dirs = newDirs }
+                    |> Project.Application
+                    |> Project.encode
+        in
         Script.writeFile { path = "elm.json", body = Json.Encode.encode 4 newBody }
             |> BackendTask.allowFatal
 
@@ -177,9 +181,11 @@ command :
     String
     -> BackendTask { fatal : FatalError, recoverable : BackendTask.Custom.Error } ()
 command cmd =
-    Do.log cmd <| \_ ->
-    Do.do (BackendTask.Custom.run "command" (Json.Encode.string cmd) Json.Decode.string) <| \output ->
-    Script.log output
+    Do.log cmd <|
+        \_ ->
+            Do.do (BackendTask.Custom.run "command" (Json.Encode.string cmd) Json.Decode.string) <|
+                \output ->
+                    Script.log output
 
 
 type alias CliOptions =
@@ -234,79 +240,82 @@ gatherDependencies packageElmJsonPath =
                             BackendTask.succeed application
                 )
         )
-    <| \application ->
-    Do.do
-        (File.jsonFile Project.decoder packageElmJsonPath
-            |> BackendTask.allowFatal
-            |> BackendTask.andThen
-                (\project ->
-                    case project of
-                        Project.Application _ ->
-                            BackendTask.fail <| FatalError.fromString "elm-vendor can only vendor packages"
+    <|
+        \application ->
+            Do.do
+                (File.jsonFile Project.decoder packageElmJsonPath
+                    |> BackendTask.allowFatal
+                    |> BackendTask.andThen
+                        (\project ->
+                            case project of
+                                Project.Application _ ->
+                                    BackendTask.fail <| FatalError.fromString "elm-vendor can only vendor packages"
 
-                        Project.Package package ->
-                            BackendTask.succeed package
+                                Project.Package package ->
+                                    BackendTask.succeed package
+                        )
                 )
-        )
-    <| \package ->
-    let
-        { satisfiedDirect, satisfiedIndirect, unsatisfied, conflicting } =
-            package.deps
-                |> tripartition
-                    (checkDependency application)
+            <|
+                \package ->
+                    let
+                        { satisfiedDirect, satisfiedIndirect, unsatisfied, conflicting } =
+                            package.deps
+                                |> tripartition
+                                    (checkDependency application)
 
-        lengthString : List a -> String
-        lengthString list =
-            String.padLeft padLength ' ' <| String.fromInt (List.length list)
+                        lengthString : List a -> String
+                        lengthString list =
+                            String.padLeft padLength ' ' <| String.fromInt (List.length list)
 
-        padLength : Int
-        padLength =
-            [ List.length satisfiedDirect
-            , List.length satisfiedIndirect
-            , List.length unsatisfied
-            , List.length conflicting
-            ]
-                |> List.map
-                    (\list ->
-                        list
-                            |> String.fromInt
-                            |> String.length
-                    )
-                |> List.maximum
-                |> Maybe.withDefault 0
+                        padLength : Int
+                        padLength =
+                            [ List.length satisfiedDirect
+                            , List.length satisfiedIndirect
+                            , List.length unsatisfied
+                            , List.length conflicting
+                            ]
+                                |> List.map
+                                    (\list ->
+                                        list
+                                            |> String.fromInt
+                                            |> String.length
+                                    )
+                                |> List.maximum
+                                |> Maybe.withDefault 0
 
-        message =
-            [ "The package needs " ++ lengthString package.deps ++ " dependencies, of which:"
-            , " - " ++ lengthString satisfiedDirect ++ " are already satisfied,"
-            , " - " ++ lengthString satisfiedIndirect ++ " are compatible with the indirect dependencies,"
-            , " - " ++ lengthString unsatisfied ++ " are not satisfied,"
-            , " - " ++ lengthString conflicting ++ " are incompatible with your current dependencies."
-            ]
-                |> String.join "\n"
-    in
-    Do.log message <| \_ ->
-    if List.isEmpty conflicting then
-        BackendTask.succeed
-            { application = application
-            , package = package
-            , satisfiedIndirect = satisfiedIndirect
-            , unsatisfied = unsatisfied
-            }
+                        message =
+                            [ "The package needs " ++ lengthString package.deps ++ " dependencies, of which:"
+                            , " - " ++ lengthString satisfiedDirect ++ " are already satisfied,"
+                            , " - " ++ lengthString satisfiedIndirect ++ " are compatible with the indirect dependencies,"
+                            , " - " ++ lengthString unsatisfied ++ " are not satisfied,"
+                            , " - " ++ lengthString conflicting ++ " are incompatible with your current dependencies."
+                            ]
+                                |> String.join "\n"
+                    in
+                    Do.log message <|
+                        \_ ->
+                            if List.isEmpty conflicting then
+                                BackendTask.succeed
+                                    { application = application
+                                    , package = package
+                                    , satisfiedIndirect = satisfiedIndirect
+                                    , unsatisfied = unsatisfied
+                                    }
 
-    else
-        BackendTask.fail <|
-            FatalError.build
-                { title = "Incompatible dependencies"
-                , body =
-                    "The following dependencies from the package are incompatible with your current application: "
-                        ++ String.join ", "
-                            (List.map
-                                (\( dep, constraint ) ->
-                                    Package.toString dep ++ " " ++ Constraint.toString constraint
-                                )
-                                conflicting
-                            )
-                }
+                            else
+                                BackendTask.fail <|
+                                    FatalError.build
+                                        { title = "Incompatible dependencies"
+                                        , body =
+                                            "The following dependencies from the package are incompatible with your current application: "
+                                                ++ String.join ", "
+                                                    (List.map
+                                                        (\( dep, constraint ) ->
+                                                            Package.toString dep ++ " " ++ Constraint.toString constraint
+                                                        )
+                                                        conflicting
+                                                    )
+                                        }
 
 
 checkDependency : Project.ApplicationInfo -> ( Package.Name, Constraint.Constraint ) -> DependencyKind

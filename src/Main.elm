@@ -18,6 +18,7 @@ import Json.Encode
 import List.Extra
 import Pages.Script as Script exposing (Script)
 import Pages.Script.Spinner as Spinner
+import Result.Extra
 
 
 run : Script
@@ -28,7 +29,7 @@ run =
                 |> Spinner.withStep "Checking elm.json from package" (\_ -> getPathFor cliOptions)
                 |> Spinner.withStep "Gathering dependencies"
                     (\packageElmJsonPath ->
-                        gatherDependencies packageElmJsonPath
+                        gatherDependencies cliOptions packageElmJsonPath
                             |> BackendTask.map
                                 (\{ application, package, satisfiedIndirect, unsatisfied } ->
                                     { packageElmJsonPath = packageElmJsonPath
@@ -53,7 +54,14 @@ withStep_ label f previous =
     Spinner.withStep label (\input -> BackendTask.map (always input) (f input)) previous
 
 
-copyFiles : String -> Project.PackageInfo -> BackendTask FatalError ()
+type alias MinimalPackageInfo =
+    { name : Package.Name
+    , version : Version.Version
+    , deps : Project.Deps Constraint.Constraint
+    }
+
+
+copyFiles : String -> MinimalPackageInfo -> BackendTask FatalError ()
 copyFiles packageElmJsonPath package =
     let
         target : String
@@ -67,12 +75,12 @@ copyFiles packageElmJsonPath package =
                     Do.noop
 
 
-targetPath : Project.PackageInfo -> String
+targetPath : MinimalPackageInfo -> String
 targetPath package =
     "vendored/" ++ Package.toString package.name ++ "/" ++ Version.toString package.version
 
 
-addFolder : Project.ApplicationInfo -> Project.PackageInfo -> BackendTask FatalError ()
+addFolder : Project.ApplicationInfo -> MinimalPackageInfo -> BackendTask FatalError ()
 addFolder application package =
     let
         target : String
@@ -102,7 +110,7 @@ addFolder application package =
             |> BackendTask.allowFatal
 
 
-removeDependency : Project.ApplicationInfo -> Project.PackageInfo -> BackendTask FatalError ()
+removeDependency : Project.ApplicationInfo -> MinimalPackageInfo -> BackendTask FatalError ()
 removeDependency application package =
     if List.any (\( depName, _ ) -> depName == package.name) application.depsDirect then
         command ("elm-json uninstall --yes " ++ Package.toString package.name)
@@ -123,10 +131,15 @@ getPathFor cliOptions =
             else
                 input
     in
-    Glob.succeed identity
-        |> Glob.capture (Glob.literal <| (cliOptions.nameOrPath |> cut "elm.json" |> cut "/") ++ "/elm.json")
-        |> Glob.expectUniqueMatch
-        |> BackendTask.allowFatal
+    case cliOptions.path of
+        Just path ->
+            Glob.succeed identity
+                |> Glob.capture (Glob.literal <| (path |> cut "elm.json" |> cut "/") ++ "/elm.json")
+                |> Glob.expectUniqueMatch
+                |> BackendTask.allowFatal
+
+        Nothing ->
+            BackendTask.fail (FatalError.fromString "A path is currently required")
 
 
 installIndirectDependencies : List ( ( Package.Name, Constraint.Constraint ), Version.Version ) -> BackendTask FatalError ()
@@ -189,9 +202,9 @@ command cmd =
 
 
 type alias CliOptions =
-    { nameOrPath : String
-
-    -- , version : Maybe String
+    { path : Maybe String
+    , name : Maybe String
+    , version : Maybe String
     }
 
 
@@ -200,33 +213,30 @@ config =
     Program.config
         |> Program.add
             (OptionsParser.build
-                (\nameOrPath ->
-                    -- version
-                    { nameOrPath = nameOrPath
-
-                    -- , version = version
+                (\name version path ->
+                    { name = name
+                    , version = version
+                    , path = path
                     }
                 )
-                |> OptionsParser.with
-                    (Option.requiredPositionalArg
-                        -- "Name or path"
-                        "path"
-                    )
-             -- |> OptionsParser.withOptionalPositionalArg (Option.optionalPositionalArg "Version")
+                |> OptionsParser.with (Option.optionalKeywordArg "package-name")
+                |> OptionsParser.with (Option.optionalKeywordArg "package-version")
+                |> OptionsParser.withOptionalPositionalArg (Option.optionalPositionalArg "path")
             )
 
 
 gatherDependencies :
-    String
+    CliOptions
+    -> String
     ->
         BackendTask
             FatalError
             { application : Project.ApplicationInfo
-            , package : Project.PackageInfo
+            , package : MinimalPackageInfo
             , satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
             , unsatisfied : List ( Package.Name, Constraint.Constraint )
             }
-gatherDependencies packageElmJsonPath =
+gatherDependencies cliOptions packageElmJsonPath =
     Do.do
         (File.jsonFile Project.decoder "elm.json"
             |> BackendTask.allowFatal
@@ -248,11 +258,13 @@ gatherDependencies packageElmJsonPath =
                     |> BackendTask.andThen
                         (\project ->
                             case project of
-                                Project.Application _ ->
-                                    BackendTask.fail <| FatalError.fromString "elm-vendor can only vendor packages"
+                                Project.Application app ->
+                                    applicationToMinimalPackageInfo cliOptions app
+                                        |> Result.mapError FatalError.fromString
+                                        |> BackendTask.fromResult
 
                                 Project.Package package ->
-                                    BackendTask.succeed package
+                                    BackendTask.succeed (packageToMinimalPackageInfo package)
                         )
                 )
             <|
@@ -316,6 +328,56 @@ gatherDependencies packageElmJsonPath =
                                                         conflicting
                                                     )
                                         }
+
+
+packageToMinimalPackageInfo : Project.PackageInfo -> MinimalPackageInfo
+packageToMinimalPackageInfo package =
+    { name = package.name
+    , version = package.version
+    , deps = package.deps
+    }
+
+
+applicationToMinimalPackageInfo : CliOptions -> Project.ApplicationInfo -> Result String MinimalPackageInfo
+applicationToMinimalPackageInfo cliOptions application =
+    Result.map3 MinimalPackageInfo
+        (case cliOptions.name of
+            Nothing ->
+                Err "When vendoring an application, you must specify a package name with --name"
+
+            Just name ->
+                case Package.fromString name of
+                    Nothing ->
+                        Err ("Invalid package name: " ++ name)
+
+                    Just packageName ->
+                        Ok packageName
+        )
+        (case cliOptions.version of
+            Nothing ->
+                Err "When vendoring an application, you must specify a package version with --version"
+
+            Just version ->
+                case Version.fromString version of
+                    Nothing ->
+                        Err ("Invalid package version: " ++ version)
+
+                    Just packageVersion ->
+                        Ok packageVersion
+        )
+        (application.depsDirect
+            |> Result.Extra.combineMap (Result.Extra.combineMapSecond versionToConstraint)
+        )
+
+
+versionToConstraint : Version.Version -> Result String Constraint.Constraint
+versionToConstraint version =
+    let
+        ( maj, _, _ ) =
+            version |> Version.toTuple
+    in
+    Constraint.fromString (Version.toString version ++ " <= v < " ++ String.fromInt (maj + 1) ++ ".0.0")
+        |> Result.fromMaybe ("Failed to build constraint from version " ++ Version.toString version)
 
 
 checkDependency : Project.ApplicationInfo -> ( Package.Name, Constraint.Constraint ) -> DependencyKind

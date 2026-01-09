@@ -295,6 +295,7 @@ gatherDependencies cliOptions packageElmJsonPath =
                                 |> List.maximum
                                 |> Maybe.withDefault 0
 
+                        message : String
                         message =
                             [ "The package needs " ++ lengthString package.deps ++ " dependencies, of which:"
                             , " - " ++ lengthString satisfiedDirect ++ " are already satisfied,"
@@ -456,6 +457,20 @@ tripartition :
         }
 tripartition f xs =
     let
+        go :
+            List ( Package.Name, Constraint.Constraint )
+            ->
+                { satisfiedDirect : List ( Package.Name, Constraint.Constraint )
+                , satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
+                , unsatisfied : List ( Package.Name, Constraint.Constraint )
+                , conflicting : List ( Package.Name, Constraint.Constraint )
+                }
+            ->
+                { satisfiedDirect : List ( Package.Name, Constraint.Constraint )
+                , satisfiedIndirect : List ( ( Package.Name, Constraint.Constraint ), Version.Version )
+                , unsatisfied : List ( Package.Name, Constraint.Constraint )
+                , conflicting : List ( Package.Name, Constraint.Constraint )
+                }
         go queue acc =
             case queue of
                 [] ->

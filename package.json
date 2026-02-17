@@ -2,7 +2,7 @@
     "license": "BSD-3-Clause",
     "devDependencies": {
         "elm-format": "^0.8.8",
-        "elm-pages": "^3.0.28",
+        "elm-pages": "^3.1.3",
         "elm-review": "^2.13.5",
         "elm-test-rs": "^3.0.1-0"
     },
